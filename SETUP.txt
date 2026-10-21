@@ -1,0 +1,3 @@
+GIMPS website with targets.mind included.
+Upload the entire extracted folder to an HTTPS host (e.g. GitHub Pages).
+IMPORTANT: targets.mind must have been compiled with images in this order: gimp, pup, straight.

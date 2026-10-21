@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <title>GIMPS / VOLUME 01 — AR</title>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; font-family: Arial, Helvetica, sans-serif; }
+      #hud { position: fixed; z-index: 20; top: 0; left: 0; right: 0; padding: calc(env(safe-area-inset-top) + 20px) 20px 20px; pointer-events: none; background: linear-gradient(#000a, transparent); }
+      #top { display: flex; justify-content: space-between; font-size: 13px; font-weight: 900; letter-spacing: .07em; }
+      #status { margin-top: 14px; font-size: 12px; letter-spacing: .07em; }
+      #status:empty { display: none; }
+      #message { position: fixed; z-index: 30; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 24px); padding: 18px; background: #000e; border: 1px solid #777; display: none; font-size: 14px; line-height: 1.5; }
+      .camera-options { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+      .camera-options button { background: #fff; color: #000; border: 0; padding: 12px 18px; font-weight: bold; cursor: pointer; }
+      .camera-options button:focus-visible { outline: 3px solid #aaa; outline-offset: 3px; }
+      #message .camera-options { margin-top: 14px; }
+      a { color: white; }
+      body > video { z-index: 0 !important; }
+      a-scene { position: fixed !important; inset: 0; z-index: 1; background: transparent !important; }
+      #loader { position: fixed; z-index: 25; inset: 0; background: black; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 18px; text-align: center; padding: 28px; }
+      #loader img { display: block; width: min(78vw, 390px); height: auto; max-height: 35vh; object-fit: contain; }
+      #loading { font-size: 12px; letter-spacing: .12em; line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <div id="loader">
+      <img src="./assets/branding/gimps-logo.png?v=2" alt="GIMPS logo">
+      <span id="loading">CHOOSE A CAMERA TO START AR</span>
+      <div class="camera-options" id="initial-camera-options">
+        <button type="button" data-camera="environment">USE REAR CAMERA</button>
+        <button type="button" data-camera="user">USE LAPTOP / FRONT CAMERA</button>
+      </div>
+    </div>
+    <div id="hud">
+      <div id="top">
+        <img src="./assets/branding/gimps-logo.png?v=2" alt="GIMPS" style="width:224px;max-height:100px;object-fit:contain;object-position:left center">
+        <span>18+ / AR</span>
+      </div>
+      <div id="status" aria-live="polite"></div>
+    </div>
+    <div id="message" role="alert">
+      <div id="error"></div>
+      <div class="camera-options">
+        <button type="button" data-camera="environment">RETRY REAR CAMERA</button>
+        <button type="button" data-camera="user">TRY LAPTOP / FRONT CAMERA</button>
+      </div>
+    </div>
+    <a-scene
+      id="scene"
+      mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: false; maxTrack: 1; filterMinCF: 0.001; filterBeta: 0.01"
+      color-space="sRGB"
+      renderer="colorManagement: true"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false"
+      embedded
+    >
+      <a-assets>
+        <img id="img1" src="./assets/plaques/plaque-001.png">
+        <img id="img2" src="./assets/plaques/plaque-002.png">
+        <img id="img3" src="./assets/plaques/plaque-003.png">
+      </a-assets>
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+      <a-entity mindar-image-target="targetIndex: 0" data-name="001 — THE CLASSIC GIMP">
+        <a-plane src="#img1" position="0 0 0.02" width="2.625" height="3.996" material="shader: flat; transparent: true; side: double"></a-plane>
+      </a-entity>
+      <a-entity mindar-image-target="targetIndex: 1" data-name="002 — THE PUP">
+        <a-plane src="#img2" position="0 0 0.02" width="2.625" height="3.996" material="shader: flat; transparent: true; side: double"></a-plane>
+      </a-entity>
+      <a-entity mindar-image-target="targetIndex: 2" data-name="003 — THE RESTRAINED GIMP">
+        <a-plane src="#img3" position="0 0 0.02" width="2.625" height="3.996" material="shader: flat; transparent: true; side: double"></a-plane>
+      </a-entity>
+    </a-scene>
+    <script>
+      const scene = document.querySelector('#scene');
+      const loader = document.querySelector('#loader');
+      const loading = document.querySelector('#loading');
+      const status = document.querySelector('#status');
+      const message = document.querySelector('#message');
+      const error = document.querySelector('#error');
+      const initialCameraOptions = document.querySelector('#initial-camera-options');
+      let starting = false;
+      let activeTarget = null;
+      let pendingTarget = null;
+      let pendingTargetTimer = null;
+
+      document.querySelectorAll('[mindar-image-target]').forEach((el) => {
+        const plaque = el.querySelector('a-plane');
+        plaque.setAttribute('visible', false);
+        el.addEventListener('targetFound', () => {
+          clearTimeout(pendingTargetTimer);
+          if (activeTarget && activeTarget !== el) {
+            activeTarget.querySelector('a-plane').setAttribute('visible', false);
+            activeTarget = null;
+          }
+          pendingTarget = el;
+          pendingTargetTimer = setTimeout(() => {
+            if (pendingTarget !== el || !el.object3D.visible) return;
+            plaque.setAttribute('visible', true);
+            activeTarget = el;
+            pendingTarget = null;
+            status.textContent = el.dataset.name;
+          }, 350);
+        });
+        el.addEventListener('targetLost', () => {
+          if (pendingTarget === el) {
+            clearTimeout(pendingTargetTimer);
+            pendingTarget = null;
+          }
+          if (activeTarget === el) {
+            plaque.setAttribute('visible', false);
+            activeTarget = null;
+            status.textContent = '';
+          }
+        });
+      });
+
+      async function start(facingMode) {
+        if (starting) return;
+        starting = true;
+        let cameraStream;
+        message.style.display = 'none';
+        initialCameraOptions.style.display = 'none';
+        loader.style.display = 'flex';
+        loading.textContent = 'STARTING CAMERA… ALLOW CAMERA ACCESS WHEN ASKED';
+
+        try {
+          if (!window.isSecureContext) {
+            throw new Error('Camera access requires HTTPS, or localhost for local testing.');
+          }
+          const response = await fetch('./assets/targets.mind', { method: 'GET', cache: 'no-store' });
+          if (!response.ok || !(await response.arrayBuffer()).byteLength) {
+            throw new Error('Tracking targets are missing or empty. Add a compiled assets/targets.mind file.');
+          }
+          if (!scene.hasLoaded) {
+            await new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => reject(new Error('AR scene did not load. Check internet access and reload.')), 15000);
+              scene.addEventListener('loaded', () => {
+                clearTimeout(timeout);
+                resolve();
+              }, { once: true });
+            });
+          }
+          const ar = scene.systems['mindar-image-system'];
+          if (!ar) throw new Error('AR library failed to load. Check your internet connection.');
+
+          const mediaDevices = navigator.mediaDevices;
+          if (!mediaDevices?.getUserMedia) throw new Error('This browser does not support camera access.');
+          cameraStream = await mediaDevices.getUserMedia({
+            audio: false,
+            video: { facingMode: { ideal: facingMode } }
+          });
+          loading.textContent = 'CAMERA CONNECTED — PREPARING AR TRACKING…';
+          const ownGetUserMedia = Object.getOwnPropertyDescriptor(mediaDevices, 'getUserMedia');
+          try {
+            Object.defineProperty(mediaDevices, 'getUserMedia', {
+              configurable: true,
+              value: () => Promise.resolve(cameraStream)
+            });
+            ar.start();
+          } finally {
+            if (ownGetUserMedia) {
+              Object.defineProperty(mediaDevices, 'getUserMedia', ownGetUserMedia);
+            } else {
+              delete mediaDevices.getUserMedia;
+            }
+          }
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              cleanup();
+              reject(new Error('The camera opened, but AR did not finish loading. Check your connection and reload.'));
+            }, 45000);
+            const onReady = () => {
+              cleanup();
+              resolve();
+            };
+            const onError = () => {
+              cleanup();
+              reject(new Error('Camera opened, but AR could not start. Check camera permission and reload the page.'));
+            };
+            function cleanup() {
+              clearTimeout(timeout);
+              scene.removeEventListener('arReady', onReady);
+              scene.removeEventListener('arError', onError);
+            }
+            scene.addEventListener('arReady', onReady, { once: true });
+            scene.addEventListener('arError', onError, { once: true });
+          });
+          loader.style.display = 'none';
+        } catch (e) {
+          cameraStream?.getTracks().forEach((track) => track.stop());
+          loader.style.display = 'none';
+          error.textContent = e.message || 'Could not start camera. Check browser camera permissions.';
+          message.style.display = 'block';
+        } finally {
+          starting = false;
+        }
+      }
+
+      document.querySelectorAll('[data-camera]').forEach((button) => {
+        button.addEventListener('click', () => start(button.dataset.camera));
+      });
+
+      scene.addEventListener('arError', () => {
+        loader.style.display = 'none';
+        error.textContent = 'Camera or AR tracking failed. Allow camera access, close other camera apps, or try the other camera option.';
+        message.style.display = 'block';
+      });
+    </script>
+  </body>
+</html>
